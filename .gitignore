@@ -1,0 +1,4 @@
+images/
+smoke/
+*.log
+__pycache__/
