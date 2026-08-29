@@ -1,0 +1,29 @@
+{
+ "baseline": "537f834e961866c28c265d8465a991c3d4ee0201",
+ "n_images": 1064,
+ "n_files_seen": 1064,
+ "disagreements": [],
+ "max_abs_delta": {
+  "lum": 0.0,
+  "var": 0.0,
+  "corr": 0.0
+ },
+ "reasons": {
+  "None": 1062,
+  "flat": 2
+ },
+ "largest_image": {
+  "px": 4194304,
+  "w": 2048,
+  "h": 2048,
+  "file": "clean/ai__Deepfake-leonardo-stablecog__Deepfake-leonardo-stablecog-00003.jpg",
+  "old_bytes": 50331648,
+  "new_bytes": 3145728
+ },
+ "motivating_case": {
+  "w": 9248,
+  "h": 6936,
+  "old_bytes": 769729536,
+  "new_bytes": 14315904
+ }
+}

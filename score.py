@@ -57,11 +57,23 @@ def preprocess_native(img, C):
 
 
 def degenerate_reason(img):
-    """offscreen.js degenerateReason(), same sampling stride and thresholds."""
-    a = np.asarray(img, dtype=np.float32)
+    """offscreen.js degenerateReason(), same sampling stride and thresholds.
+
+    The subsample happens before the float cast, not after. Casting first and slicing second
+    gives bit-identical numbers -- uint8 to float32 is lossless, and an elementwise cast
+    commutes with a slice -- but it materialises the whole image at 4 bytes per channel to
+    keep about one row in every 128. On a 9248x6936 Commons original that is 770 MB for 129
+    rows, which is what killed a later scan on a 2 GB box. offscreen.js never had this
+    problem: it reads a canvas as a Uint8ClampedArray, so the float32 blowup was an artifact
+    of transcribing it into numpy, not a difference from the extension.
+
+    Nothing in this repository's own corpus is large enough to hit it -- the biggest image
+    here is 2048x2048, and parity.py confirms every reason is unchanged. See parity.json.
+    """
+    a = np.asarray(img)                       # uint8, as the browser sees it
     h, w, _ = a.shape
     sy = max(1, h >> 7)
-    rows = a[::sy]
+    rows = a[::sy].astype(np.float32)
     lum = 0.299 * rows[:, :, 0] + 0.587 * rows[:, :, 1] + 0.114 * rows[:, :, 2]
     if lum.var() < 4:
         return "flat"
