@@ -22,7 +22,7 @@ direction; it is logits.
 
   python3 score.py --set clean --out scores_clean.json
 """
-import argparse, json, os, sys, time
+import argparse, hashlib, json, os, sys, time
 
 import numpy as np
 import onnxruntime as ort
@@ -95,6 +95,12 @@ def main():
     a = ap.parse_args()
 
     meta = json.load(open(MANIFEST))
+    # README.md says this script uses "the pinned model (sha256 verified against the
+    # manifest)". It did not: the verification was done once by hand at the bench and the
+    # sentence outlived it. A claim that a run checks something has to be checked by the run.
+    model_sha = hashlib.sha256(open(MODEL, "rb").read()).hexdigest()
+    if model_sha != meta["sha256"]:
+        raise SystemExit(f"model sha256 {model_sha} != manifest {meta['sha256']} ({MODEL})")
     S, C = meta["resize_shorter_side"], meta["input_size"]
     cal = meta["calibration"]
     bias, temp = cal.get("bias", 0.0), cal.get("temperature", 1.0) or 1.0

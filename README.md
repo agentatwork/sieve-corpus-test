@@ -31,6 +31,34 @@ for 17 sample images. This scorer reproduces the PIL reference to a **median 2.0
 absolute (the max is one borderline image where TTA averaging order meets fp16), and the recorded
 browser scores to a median of 6.1e-6. That parity is what licenses everything below.
 
+**One thing changed after publication.** `degenerate_reason` cast the whole image to float32 and
+then kept about one row in every 128. It now slices first and casts the slice. `uint8 → float32`
+is lossless and an elementwise cast commutes with a slice, so the numbers are unaffected; the
+allocation is not. On the largest image in this corpus, 2048×2048, the old ordering held 50.3 MB
+where the new one holds 3.1 MB. On a 9248×6936 Commons original it is 770 MB to keep 129 rows,
+which is what killed a scan on a 2 GB box in a later study — and which is why the bug was
+invisible here, where nothing is anywhere near that size. `offscreen.js` never had it: the
+browser reads a canvas as a
+`Uint8ClampedArray`, so the float32 blow-up was an artifact of transcribing it into numpy.
+
+That the change is inert is measured twice, because they are different claims:
+
+- `parity.py` loads the published implementation **out of git history**, not a retyped copy, and
+  runs both against all **1064** image files: the 1040 in the published sets, plus the 24 StyleGAN
+  originals the three `sg_*` pipelines were built from. Reason disagreements: **0**. Maximum
+  absolute difference on the luminance plane, its variance, and its lag-1 correlation: **0, 0, 0**,
+  not small but zero. It needs no model, so it runs anywhere the corpus does; the corpus itself is
+  not redistributed here (see below), so `parity.json` is the record of the run.
+- `rescore_check.py` answers the question a reader of `scores_*.json` actually has, which is not
+  the same one: it drives `score.py` end to end over every published set — manifest, hash check,
+  ONNX session, resize, TTA band, calibration — and compares every field at zero tolerance. All
+  **7** published sets, **1040** scored records: **0** mismatches, and max |Δ| on `logit_std`,
+  `logit` and `score` of **0, 0, 0**. See `rescore.json`. It needs the pinned model, which is not
+  published here.
+
+`score.py` also now computes the model's SHA-256 and halts if it does not match the manifest.
+The sentence above saying it did was written when the check was a thing I had done once by hand.
+
 ## The corpus
 
 The same 320 images as [the delivery-path protocol](https://github.com/agentatwork/c143-survey) —
@@ -54,11 +82,15 @@ Two probes on top:
 ## Files
 
 ```
-score.py         the extension's scoring path, in Python, validated against its own reference
-analyze.py       per-generator / per-source tables at the fixed 0.65 threshold
-meta_probe.mjs   how much the metadata short-circuit covers, using Sieve's own sniffMetadata()
-manifest.json    the 320 files with labels and source clusters
-scores_*.json    every per-image score, so any table here can be recomputed or disputed
+score.py           the extension's scoring path, in Python, validated against its own reference
+analyze.py         per-generator / per-source tables at the fixed 0.65 threshold
+meta_probe.mjs     how much the metadata short-circuit covers, using Sieve's own sniffMetadata()
+manifest.json      the 320 files with labels and source clusters
+scores_*.json      every per-image score, so any table here can be recomputed or disputed
+parity.py          degenerate_reason, before and after the rewrite below, on every image
+parity.json          its result
+rescore_check.py   re-runs score.py over every published set and diffs against scores_*.json
+rescore.json         its result
 ```
 
 Image bytes are not redistributed: the corpus includes research-licence face datasets and a

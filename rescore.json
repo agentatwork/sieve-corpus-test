@@ -1,0 +1,125 @@
+{
+ "passed": true,
+ "tolerance": 0.0,
+ "complete": true,
+ "published_sets": [
+  "clean",
+  "graphics",
+  "hard",
+  "sg_clean",
+  "sg_hard",
+  "sg_web",
+  "web"
+ ],
+ "checked": [
+  "clean",
+  "graphics",
+  "hard",
+  "sg_clean",
+  "sg_hard",
+  "sg_web",
+  "web"
+ ],
+ "scorer_sha256": "b0a007b11e418837e3baa7e1d569f538c3230343d618f55e75c20e965c45b0f0",
+ "n_images": 1040,
+ "results": [
+  {
+   "set": "clean",
+   "scorer_sha256": "b0a007b11e418837e3baa7e1d569f538c3230343d618f55e75c20e965c45b0f0",
+   "n_published": 320,
+   "n_rescored": 320,
+   "missing": [],
+   "added": [],
+   "mismatches": [],
+   "max_abs_delta": {
+    "logit_std": 0.0,
+    "logit": 0.0,
+    "score": 0.0
+   }
+  },
+  {
+   "set": "graphics",
+   "scorer_sha256": "b0a007b11e418837e3baa7e1d569f538c3230343d618f55e75c20e965c45b0f0",
+   "n_published": 8,
+   "n_rescored": 8,
+   "missing": [],
+   "added": [],
+   "mismatches": [],
+   "max_abs_delta": {
+    "logit_std": 0.0,
+    "logit": 0.0,
+    "score": 0.0
+   }
+  },
+  {
+   "set": "hard",
+   "scorer_sha256": "b0a007b11e418837e3baa7e1d569f538c3230343d618f55e75c20e965c45b0f0",
+   "n_published": 320,
+   "n_rescored": 320,
+   "missing": [],
+   "added": [],
+   "mismatches": [],
+   "max_abs_delta": {
+    "logit_std": 0.0,
+    "logit": 0.0,
+    "score": 0.0
+   }
+  },
+  {
+   "set": "sg_clean",
+   "scorer_sha256": "b0a007b11e418837e3baa7e1d569f538c3230343d618f55e75c20e965c45b0f0",
+   "n_published": 24,
+   "n_rescored": 24,
+   "missing": [],
+   "added": [],
+   "mismatches": [],
+   "max_abs_delta": {
+    "logit_std": 0.0,
+    "logit": 0.0,
+    "score": 0.0
+   }
+  },
+  {
+   "set": "sg_hard",
+   "scorer_sha256": "b0a007b11e418837e3baa7e1d569f538c3230343d618f55e75c20e965c45b0f0",
+   "n_published": 24,
+   "n_rescored": 24,
+   "missing": [],
+   "added": [],
+   "mismatches": [],
+   "max_abs_delta": {
+    "logit_std": 0.0,
+    "logit": 0.0,
+    "score": 0.0
+   }
+  },
+  {
+   "set": "sg_web",
+   "scorer_sha256": "b0a007b11e418837e3baa7e1d569f538c3230343d618f55e75c20e965c45b0f0",
+   "n_published": 24,
+   "n_rescored": 24,
+   "missing": [],
+   "added": [],
+   "mismatches": [],
+   "max_abs_delta": {
+    "logit_std": 0.0,
+    "logit": 0.0,
+    "score": 0.0
+   }
+  },
+  {
+   "set": "web",
+   "scorer_sha256": "b0a007b11e418837e3baa7e1d569f538c3230343d618f55e75c20e965c45b0f0",
+   "n_published": 320,
+   "n_rescored": 320,
+   "missing": [],
+   "added": [],
+   "mismatches": [],
+   "max_abs_delta": {
+    "logit_std": 0.0,
+    "logit": 0.0,
+    "score": 0.0
+   }
+  }
+ ]
+}
