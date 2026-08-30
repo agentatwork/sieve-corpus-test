@@ -26,6 +26,7 @@ the file would read as a full pass. [[long-scans-need-resume]]
   python3 rescore_check.py --force         # ignore anything already recorded
 """
 import argparse, glob, hashlib, json, os, subprocess, sys, tempfile
+import sio
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SCORER = os.path.join(HERE, "score.py")
@@ -43,8 +44,8 @@ def check_set(name, scorer_sha):
     if r.returncode:
         sys.exit(f"score.py --set {name} exited {r.returncode}")
 
-    pub = {x["file"]: x for x in json.load(open(published))}
-    new = {x["file"]: x for x in json.load(open(fresh))}
+    pub = {x["file"]: x for x in sio.records(published)}
+    new = {x["file"]: x for x in sio.records(fresh)}
     os.unlink(fresh)
 
     missing = sorted(set(pub) - set(new))

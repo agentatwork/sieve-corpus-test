@@ -10,6 +10,7 @@ of real photograph it is wrong about.
   python3 analyze.py
 """
 import json, os, math, collections
+import sio
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 TH = 0.65
@@ -17,7 +18,7 @@ SETS = ["clean", "web", "hard"]
 
 
 def load(s):
-    return json.load(open(os.path.join(HERE, f"scores_{s}.json")))
+    return sio.records(os.path.join(HERE, f"scores_{s}.json"))
 
 
 def wilson(k, n, z=1.96):
@@ -134,7 +135,7 @@ def main():
     for s in SETS:
         p = os.path.join(HERE, f"scores_sg_{s}.json")
         if os.path.exists(p):
-            sg[s] = json.load(open(p))
+            sg[s] = sio.records(p)
     if sg:
         print("\n" + "=" * 78)
         print("STYLEGAN FACES (thispersondoesnotexist, fetched fresh, 1024x1024)")
@@ -155,7 +156,7 @@ def main():
         print("NON-PHOTOGRAPHS — brand graphics, UI screenshots, charts, posters")
         print("(all human-made, none AI; a score >= 0.65 here is a false accusation)")
         print("=" * 78)
-        for r in sorted(json.load(open(gp)), key=lambda x: -x.get("score", -1)):
+        for r in sorted(sio.records(gp), key=lambda x: -x.get("score", -1)):
             name = r["file"].split("__")[-1].replace(".jpg", "")
             if "skip" in r:
                 print(f"  {name:24s}  SKIPPED SILENTLY ({r['skip']}) — no badge, no verdict")

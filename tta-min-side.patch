@@ -1,0 +1,48 @@
+Subject: [PATCH] TTA: give sub-384px images a second view instead of skipping TTA
+
+Selective TTA currently requires `min(w,h) >= min_side` (384), because the
+native view is a resampling-free centre crop and that crop does not exist for a
+smaller image. The effect is that the second view is switched off for exactly
+the images the model is least sure about -- thumbnails and avatars.
+
+A smaller image has no resampling-*free* crop, but it does have a
+*less*-resampled one: resize the shorter side to C (384) rather than to
+resize_shorter_side (440), and centre-crop C. That is a genuinely different
+view from the standard one -- less upscaling, full frame, no padding the model
+has never seen -- and it needs no new preprocessing code, just `preprocess`
+called with a different `resize_shorter_side`.
+
+For `min(w,h) >= min_side` the behaviour is unchanged, bit for bit.
+
+--- a/extension/src/offscreen.js
++++ b/extension/src/offscreen.js
+@@
+     // Selective TTA: when the standard view lands in the uncertainty band and
+     // the image is large enough for a native crop, average raw logits with a
+     // second, resampling-free view (measured: +0.9/+0.5/+0.3 balanced acc).
+     let tta = false;
+     const task = async () => {
+       const zStd = await runLogit(input);
+       const cfg = modelMeta.tta || {};
+       const C = modelMeta.input_size;
+       let z = zStd;
+       if (cfg.enabled) {
+         const s = calibrate(zStd, modelMeta);
+-        if (s >= cfg.band_lo && s <= cfg.band_hi &&
+-            Math.min(img.width, img.height) >= (cfg.min_side || C)) {
+-          const zNative = await runLogit(preprocessNative(img, modelMeta));
++        if (s >= cfg.band_lo && s <= cfg.band_hi) {
++          // A sub-min_side image has no resampling-free crop, but it does have
++          // a less-resampled one: shorter side to C instead of S. Unchanged
++          // for images at or above min_side.
++          const big = Math.min(img.width, img.height) >= (cfg.min_side || C);
++          const secondView = big
++            ? preprocessNative(img, modelMeta)
++            : preprocess(img, { ...modelMeta, resize_shorter_side: C });
++          const zNative = await runLogit(secondView);
+           z = (zStd + zNative) / 2;
+           tta = true;
+         }
+       }
+       return calibrate(z, modelMeta);
+     };

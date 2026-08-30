@@ -24,13 +24,24 @@ direction; it is logits.
 """
 import argparse, hashlib, json, os, sys, time
 
+import sio
+
 import numpy as np
 import onnxruntime as ort
 from PIL import Image
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-MODEL = "/tmp/sieve/dev_model/ft44s_best_fp16.onnx"
-MANIFEST = "/tmp/sieve/extension/model_manifest.json"
+# The checkout lives in /tmp, which does not survive a reboot -- and this scorer has to keep
+# judging bounty submissions until 7 September. Prefer the copy kept beside the code.
+MANIFEST = next(p for p in (f"{HERE}/model/model_manifest.json",
+                            "/tmp/sieve/extension/model_manifest.json") if os.path.exists(p))
+# Which weights to load is the manifest's decision, not a constant here. Sieve shipped three
+# models in nine days (ft44s -> ft5s -> ft58s) and changed the calibration bias 0.43 -> 0.30
+# on the way; a hardcoded filename kept happily scoring against the old one. The sha256 check
+# in load_ctx() is what makes this safe -- name and weights have to agree with the manifest.
+_WANT = os.path.basename(json.load(open(MANIFEST))["model_url"])
+MODEL = next(p for p in (f"{HERE}/model/{_WANT}",
+                         f"/tmp/sieve/dev_model/{_WANT}") if os.path.exists(p))
 MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
 STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
 
@@ -60,15 +71,11 @@ def degenerate_reason(img):
     """offscreen.js degenerateReason(), same sampling stride and thresholds.
 
     The subsample happens before the float cast, not after. Casting first and slicing second
-    gives bit-identical numbers -- uint8 to float32 is lossless, and an elementwise cast
-    commutes with a slice -- but it materialises the whole image at 4 bytes per channel to
-    keep about one row in every 128. On a 9248x6936 Commons original that is 770 MB for 129
-    rows, which is what killed a later scan on a 2 GB box. offscreen.js never had this
-    problem: it reads a canvas as a Uint8ClampedArray, so the float32 blowup was an artifact
-    of transcribing it into numpy, not a difference from the extension.
-
-    Nothing in this repository's own corpus is large enough to hit it -- the biggest image
-    here is 2048x2048, and parity.py confirms every reason is unchanged. See parity.json.
+    gives bit-identical numbers -- uint8 to float32 is lossless and an elementwise cast commutes
+    with a slice -- but it materialises the whole image at 4 bytes per channel to keep about one
+    row in every 128. On a 9248x6936 Commons original that is 770 MB for 129 rows, which is what
+    killed a scan on a 2 GB box. offscreen.js never had this problem: it reads a canvas as a
+    Uint8ClampedArray, so the float32 blowup was an artifact of transcribing it into numpy.
     """
     a = np.asarray(img)                       # uint8, as the browser sees it
     h, w, _ = a.shape
@@ -87,6 +94,52 @@ def degenerate_reason(img):
     return None
 
 
+def load_ctx():
+    """Model session + the manifest constants, in one object both entry points share."""
+    meta = json.load(open(MANIFEST))
+    # the bounty text names this hash, and the results page says it is checked every run;
+    # a claim like that has to be computed, not asserted in prose
+    h = hashlib.sha256(open(MODEL, "rb").read()).hexdigest()
+    if h != meta["sha256"]:
+        raise SystemExit(f"model sha256 {h} != manifest {meta['sha256']} ({MODEL})")
+    cal = meta["calibration"]
+    so = ort.SessionOptions()
+    so.intra_op_num_threads = 1        # one core; more threads only thrash
+    so.inter_op_num_threads = 1
+    sess = ort.InferenceSession(MODEL, so, providers=["CPUExecutionProvider"])
+    iname = sess.get_inputs()[0].name
+    temp = cal.get("temperature", 1.0) or 1.0
+    return {"S": meta["resize_shorter_side"], "C": meta["input_size"],
+            "bias": cal.get("bias", 0.0), "temp": temp, "tta": meta.get("tta", {}),
+            "logit": lambda t: float(sess.run(None, {iname: t})[0].ravel()[0])}
+
+
+def score_image(img, ctx):
+    """The scoring rule itself. One copy: score.py's sweep and judge.py both call this.
+
+    Returns the fields that go in a record -- either {"skip": reason} or the
+    logits and the calibrated score.
+    """
+    S, C, tta_cfg = ctx["S"], ctx["C"], ctx["tta"]
+    sigmoid = lambda z: 1.0 / (1.0 + np.exp(-z))
+    calibrate = lambda z: float(sigmoid(z / ctx["temp"] + ctx["bias"]))
+    w, h = img.size
+    if min(w, h) < 32:
+        return {"skip": "too-small"}
+    dg = degenerate_reason(img)
+    if dg:
+        return {"skip": "degenerate-" + dg}
+    z_std = ctx["logit"](preprocess(img, S, C))
+    z, used_tta = z_std, False
+    if tta_cfg.get("enabled"):
+        s = calibrate(z_std)
+        if (tta_cfg["band_lo"] <= s <= tta_cfg["band_hi"]
+                and min(w, h) >= tta_cfg.get("min_side", C)):
+            z = (z_std + ctx["logit"](preprocess_native(img, C))) / 2.0
+            used_tta = True
+    return {"tta": used_tta, "logit_std": z_std, "logit": z, "score": calibrate(z)}
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--set", required=True, help="clean | web | hard")
@@ -94,26 +147,7 @@ def main():
     ap.add_argument("--limit", type=int, default=0)
     a = ap.parse_args()
 
-    meta = json.load(open(MANIFEST))
-    # README.md says this script uses "the pinned model (sha256 verified against the
-    # manifest)". It did not: the verification was done once by hand at the bench and the
-    # sentence outlived it. A claim that a run checks something has to be checked by the run.
-    model_sha = hashlib.sha256(open(MODEL, "rb").read()).hexdigest()
-    if model_sha != meta["sha256"]:
-        raise SystemExit(f"model sha256 {model_sha} != manifest {meta['sha256']} ({MODEL})")
-    S, C = meta["resize_shorter_side"], meta["input_size"]
-    cal = meta["calibration"]
-    bias, temp = cal.get("bias", 0.0), cal.get("temperature", 1.0) or 1.0
-    tta_cfg = meta.get("tta", {})
-    sigmoid = lambda z: 1.0 / (1.0 + np.exp(-z))
-    calibrate = lambda z: float(sigmoid(z / temp + bias))
-
-    so = ort.SessionOptions()
-    so.intra_op_num_threads = 1        # one core; more threads only thrash
-    so.inter_op_num_threads = 1
-    sess = ort.InferenceSession(MODEL, so, providers=["CPUExecutionProvider"])
-    iname = sess.get_inputs()[0].name
-    logit = lambda t: float(sess.run(None, {iname: t})[0].ravel()[0])
+    ctx = load_ctx()
 
     d = os.path.join(HERE, "images", a.set)
     files = sorted(os.listdir(d))
@@ -126,32 +160,21 @@ def main():
         parts = f.split("__")
         rec = {"file": f, "label": 1 if f.startswith("ai__") else 0,
                "source": parts[1] if len(parts) > 2 else "-", "w": w, "h": h}
-        if min(w, h) < 32:
-            rec["skip"] = "too-small"
-        else:
-            dg = degenerate_reason(img)
-            if dg:
-                rec["skip"] = "degenerate-" + dg
-            else:
-                z_std = logit(preprocess(img, S, C))
-                z = z_std
-                rec["tta"] = False
-                if tta_cfg.get("enabled"):
-                    s = calibrate(z_std)
-                    if (tta_cfg["band_lo"] <= s <= tta_cfg["band_hi"]
-                            and min(w, h) >= tta_cfg.get("min_side", C)):
-                        z = (z_std + logit(preprocess_native(img, C))) / 2.0
-                        rec["tta"] = True
-                rec["logit_std"] = z_std
-                rec["logit"] = z
-                rec["score"] = calibrate(z)
+        rec.update(score_image(img, ctx))
         out.append(rec)
         if (i + 1) % 20 == 0:
             el = time.time() - t0
             print(f"  {i+1}/{len(files)}  {el:.0f}s  ({el/(i+1)*1000:.0f} ms/img)",
                   file=sys.stderr, flush=True)
     dest = a.out or os.path.join(HERE, f"scores_{a.set}.json")
-    json.dump(out, open(dest, "w"))
+    # Stamp the model into the file. A scores file that does not say which ONNX produced it
+    # cannot contradict a wrong memory, and mine was wrong for a whole sweep.
+    _m = json.load(open(MANIFEST))
+    sio.dump(dest, out, {"version": _m["version"], "model_file": os.path.basename(MODEL),
+                         "sha256": hashlib.sha256(open(MODEL, "rb").read()).hexdigest(),
+                         "bias": _m.get("calibration", {}).get("bias"),
+                         "temperature": _m.get("calibration", {}).get("temperature"),
+                         "input_size": _m.get("input_size")})
     scored = [r for r in out if "score" in r]
     print(f"{a.set}: {len(scored)} scored, {len(out)-len(scored)} skipped -> {dest}")
 

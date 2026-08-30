@@ -1,4 +1,5 @@
 images/
 smoke/
+model/
 *.log
 __pycache__/
